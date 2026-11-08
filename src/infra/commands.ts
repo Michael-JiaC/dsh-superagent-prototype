@@ -20,11 +20,16 @@ export function commandError(error: unknown, program = 'command'): Error {
   const exitCode = error && typeof error === 'object' && 'code' in error && typeof error.code === 'number' ? error.code : undefined
   if (error && typeof error === 'object' && 'stderr' in error && typeof error.stderr === 'string') {
     const stderr = error.stderr.trim()
-    let parsed: { error?: { code?: number; message?: string } } | undefined
-    try { parsed = JSON.parse(stderr.slice(stderr.indexOf('{'))) as typeof parsed }
-    catch { /* Non-JSON CLI diagnostics are retained below. */ }
-    const code = parsed?.error?.code
-    if (parsed?.error?.message) return new CliError(`${parsed.error.message}${code ? ` (${code})` : ''}`, code, exitCode)
+    const jsonError = (text: string): { code?: number; message?: string } | undefined => {
+      try { return (JSON.parse(text.slice(text.indexOf('{'))) as { error?: { code?: number; message?: string } }).error }
+      catch { return undefined /* Non-JSON CLI diagnostics are retained below. */ }
+    }
+    // `gws` prints the API's JSON error on standard output and only a one-line summary on standard error.
+    const stdout = 'stdout' in error && typeof error.stdout === 'string' ? error.stdout.trim() : ''
+    const fromStderr = jsonError(stderr)
+    const reported = fromStderr?.message ? fromStderr : stdout ? jsonError(stdout) : undefined
+    const code = reported?.code
+    if (reported?.message) return new CliError(`${reported.message}${code ? ` (${code})` : ''}`, code, exitCode)
     // `gh` exits non-zero on HTTP errors (such as `gh: Not Found (HTTP 404)`) and on `gh: HTTP 304`, which ETag polling relies on.
     if (stderr) return new CliError(stderr.slice(0, 2000), Number(/\bHTTP (\d{3})\b/.exec(stderr)?.[1]) || undefined, exitCode)
   }

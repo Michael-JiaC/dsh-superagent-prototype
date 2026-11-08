@@ -68,6 +68,27 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
 
    Both configurations share the keychain entry for the app secret. To remove only the bot configuration, delete its directory; do not run `lark-cli config remove`, which would affect the shared secret.
 
+### Gmail (optional)
+
+The Gmail Source reads the mail that matches a Gmail search, and a reply is saved as a draft in the same conversation. The agent never sends mail. It needs the Google Workspace CLI, `gws`, signed in to the mailbox.
+
+1. Install and sign in:
+
+   ```sh
+   npm install -g @googleworkspace/cli
+   gws auth setup
+   gws auth login -s gmail
+   gws gmail users getProfile --params '{"userId":"me"}'
+   ```
+
+   The last command should print the mailbox address. `gws auth setup` needs the `gcloud` CLI; without it, follow the manual OAuth steps in the `gws` documentation. A dedicated mailbox is the safest choice. `gws` keeps its sign-in in the operator's home directory, where Executor Sessions run as the same OS user, so a worker can reach every mail the sign-in can. Only the Source's search limits what the agent is *given*; the worker instructions forbid sending, deleting or changing mail, but that is an instruction, not a permission boundary.
+2. In Gmail, create a label named `superagent`. Apply it to a mail, or add a filter that applies it, to give that mail to the agent. The Source's search can be anything Gmail accepts, such as `label:superagent` or `from:me to:me`.
+3. Put your own address on the Gmail Source's allowed list (Policy → On each Source). Mail from anyone else is received but cannot start work.
+
+   The sender is read from the `From:` header, which anyone can forge. The Source therefore trusts it only when Gmail's `Authentication-Results` shows a passing DKIM or SPF check (or there is no such header, as for mail your own mailbox wrote); otherwise the mail has no sender identity and cannot start work. Label mail by hand, or filter on something the sender cannot choose, rather than on `From:` alone.
+
+The Source receives mail that arrived within its lookback (seven days by default). A mail that matches only after it gets its label is received if it arrived within that window; labelling an older mail starts nothing. A reply in a conversation the agent works on reaches it without a label.
+
 ## Install
 
 Run this block once, on a machine that has no `superagent` profile yet:
@@ -88,7 +109,7 @@ Run the profile-creation command only for a new installation. If the profile alr
 
 ## Machine configuration
 
-Copy [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) to `~/.dsh/profiles/superagent/cordis.patch.yml`, replacing that file, and replace every `<placeholder>`. For Feishu, also enable the `dsh-superagent-feishu` entry there. The `webserver` entry sets the panel's port.
+Copy [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) to `~/.dsh/profiles/superagent/cordis.patch.yml`, replacing that file, and replace every `<placeholder>`. For Feishu, also enable the `dsh-superagent-feishu` entry there, and for Gmail the `dsh-superagent-gmail` entry. The `webserver` entry sets the panel's port.
 
 | Key | Required | Meaning |
 | --- | --- | --- |
@@ -230,6 +251,10 @@ A file in `worker-bin` or `worker-gitconfig` that dsh-superagent did not write s
 
 From an allowed GitHub account, open an Issue or post a comment containing `@<agent login> <request>`. Within a polling interval (one minute by default), Overview should show a Ticket. The agent acknowledges the request, works in its own Session and directory, and delivers in the original conversation. For Feishu, mention the bot in a configured chat.
 
+For Gmail, send yourself a mail (from an address on the allowed list) that the Source's search matches, for example one labelled `superagent`, asking for something small such as a summary. Within a polling interval (one minute by default), Overview should show a Ticket. The agent's answer appears as a draft in that conversation; open it in Gmail and send it if it is what you want.
+
+**Setup still needs a GitHub repository and agent account,** whether or not GitHub is a source of requests: setup does not finish, and no Source reads anything, until the GitHub card names a repository the agent account can push to. To use only Gmail, point the GitHub card at a scratch repository the agent account can push to.
+
 ## Upgrade
 
 1. Wait until no Executor is in the middle of a turn.
@@ -262,6 +287,8 @@ Setup problems appear on the overview with a link to the fix, in the panel's lan
 | `… was not written by dsh-superagent` | Move the named file out of `<stateDir>/worker-bin` or `<stateDir>/worker-gitconfig`, or choose another `stateDir` |
 | `The bot lark-cli allows user identities` | Point the Feishu Source at a bot-only configuration, as in Feishu bot above |
 | `The bot lark-cli does not work.` or `The bot identity of app … is …` | Check the configuration's app id and secret |
+| The Gmail Source reports an authentication error from `gws` (its exit code 2) | The `gws` sign-in expired or is missing: run `gws auth login -s gmail` as the operator's user |
+| The Gmail Source is ready but a labelled mail does nothing | Check that the sender is on the Gmail allowed list, that the mail arrived within the lookback, and that the Source's search matches it: `gws gmail users messages list --params '{"userId":"me","q":"label:superagent"}'` |
 | `The Feishu bot is not a member of the chat.` | Add the bot to the chat in the chat's settings; the next attempt succeeds |
 | `status` exits 2 | A part reports an error, which a restart does not fix: `errors` names each part, as listed under Management API, with its detail; each part clears its own entry once it works again |
 | `status` exits 3 | Setup waits: `setup` says what is missing, and the overview links to the setting that fixes it |

@@ -59,6 +59,7 @@ Each Source's Policy has an admission table. Its rows are receiving scopes:
 
 - **Feishu:** each configured chat, other chats the bot receives mentions from, and direct messages. Other chats are received only when **其他群** is set to **仅 @** on the Feishu card.
 - **GitHub:** new Issues, new pull requests, comments and the default branch's CI.
+- **Gmail:** the mail that matches the Source's search. All of it counts as addressed to the agent, so mail from someone on the list is an explicit request, and mail from anyone else is ignored unless the unlisted-addressed cell is raised.
 
 A row has up to three cells. Each cell decides whether a message becomes an explicit request, an inferred candidate or nothing:
 
